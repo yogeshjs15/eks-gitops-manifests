@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample-app
+  namespace: dev
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: sample-app
+  template:
+    metadata:
+      labels:
+        app: sample-app
+        version: latest
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/metrics"
+        sidecar.opentelemetry.io/inject: "true"
+        instrumentation.opentelemetry.io/inject-nodejs: "true"
+    spec:
+      serviceAccountName: sample-app-sa
+      containers:
+        - name: app
+          image: "604604739963.dkr.ecr.ap-south-1.amazonaws.com/my-gitops-cluster-app:otel"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3000"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.observability:4317"
+            - name: OTEL_SERVICE_NAME
+              value: "sample-app"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment=production,service.version=1.0.0"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+            - name: OTEL_METRICS_EXPORTER
+              value: "otlp"
+            - name: OTEL_LOGS_EXPORTER
+              value: "otlp"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1001
+            capabilities:
+              drop:
+                - ALL
